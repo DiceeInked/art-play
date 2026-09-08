@@ -1,0 +1,843 @@
+[gd_scene format=3 uid="uid://dfdbdr8yvkmki"]
+
+[sub_resource type="GDScript" id="GDScript_jonpb"]
+script/source = "extends Node2D
+
+@export var grid_size: float = 25.0
+@export var grid_extent: int = 100
+
+func _draw() -> void:
+	var extent := grid_size * grid_extent
+
+	# Vertical lines
+	for x in range(-grid_extent, grid_extent + 1):
+		var x_pos := x * grid_size
+
+		draw_line(
+			Vector2(x_pos, -extent),
+			Vector2(x_pos, extent),
+			Color(0.7, 0.7, 0.7),
+			1.0
+		)
+
+	# Horizontal lines
+	for y in range(-grid_extent, grid_extent + 1):
+		var y_pos := y * grid_size
+
+		draw_line(
+			Vector2(-extent, y_pos),
+			Vector2(extent, y_pos),
+			Color(0.7, 0.7, 0.7),
+			1.0
+		)
+"
+
+[sub_resource type="GDScript" id="GDScript_npwx6"]
+script/source = "extends Sprite2D
+
+# ============================================================
+# SETTINGS
+# ============================================================
+
+@export_range(1, 4096, 1)
+var canvas_size: int = 256
+
+@export_range(1, 100, 1)
+var pen_size: int = 5
+
+# Vertical collision segments shorter than this many pixels
+# will be ignored.
+#
+# This helps prevent tiny 1-pixel bumps from behaving like
+# little walls.
+@export_range(0, 20, 1)
+var minimum_wall_height: int = 2
+
+
+# ============================================================
+# SPECTATOR MODE
+# ============================================================
+
+var spectator_mode: bool = false
+
+
+# ============================================================
+# DRAWING VARIABLES
+# ============================================================
+
+var img: Image
+var texture_image: ImageTexture
+
+var mouse_pos := Vector2.ZERO
+var prev_mouse_pos := Vector2.ZERO
+
+var is_drawing := false
+
+# True only when the actual terrain image has changed.
+var terrain_dirty := false
+
+
+# ============================================================
+# COLLISION VARIABLES
+# ============================================================
+
+var current_terrain: StaticBody2D
+var rebuild_pending := false
+
+var last_canvas_size: int = -1
+
+
+# ============================================================
+# SETUP
+# ============================================================
+
+func _ready() -> void:
+	centered = true
+
+	create_canvas()
+
+	# Build the initial terrain once when the game starts.
+	terrain_dirty = true
+	request_rebuild()
+
+
+func create_canvas() -> void:
+
+	img = Image.create_empty(
+		canvas_size,
+		canvas_size,
+		false,
+		Image.FORMAT_RGBA8
+	)
+
+	# Completely transparent starting canvas.
+	img.fill(Color(0, 0, 0, 0))
+
+	texture_image = ImageTexture.create_from_image(img)
+	texture = texture_image
+
+	last_canvas_size = canvas_size
+
+	mouse_pos = Vector2.ZERO
+	prev_mouse_pos = Vector2.ZERO
+
+
+# ============================================================
+# CHANGE SPECTATOR MODE
+# ============================================================
+
+func set_spectator_mode(enabled: bool) -> void:
+
+	# Nothing actually changed.
+	if spectator_mode == enabled:
+		return
+
+	var was_spectating := spectator_mode
+
+	spectator_mode = enabled
+
+
+	# ----------------------------------------------------------
+	# ENTERING SPECTATOR MODE
+	# ----------------------------------------------------------
+
+	if spectator_mode:
+
+		is_drawing = false
+
+		prev_mouse_pos = to_local(
+			get_global_mouse_position()
+		)
+
+
+	# ----------------------------------------------------------
+	# EXITING SPECTATOR MODE
+	# ----------------------------------------------------------
+
+	elif was_spectating:
+
+		is_drawing = false
+
+		prev_mouse_pos = to_local(
+			get_global_mouse_position()
+		)
+
+		# Only rebuild if the drawing was actually changed.
+		if terrain_dirty:
+			request_rebuild()
+
+
+# ============================================================
+# MAIN LOOP
+# ============================================================
+
+func _process(_delta: float) -> void:
+
+	# ----------------------------------------------------------
+	# Detect canvas-size changes.
+	# ----------------------------------------------------------
+
+	if canvas_size != last_canvas_size:
+
+		create_canvas()
+
+		terrain_dirty = true
+
+		# If we're not currently editing, the collision needs
+		# to be updated immediately.
+		if not spectator_mode:
+			request_rebuild()
+
+
+	# ----------------------------------------------------------
+	# Current mouse position in Sprite2D-local coordinates.
+	# ----------------------------------------------------------
+
+	mouse_pos = to_local(
+		get_global_mouse_position()
+	)
+
+
+	# ----------------------------------------------------------
+	# Drawing is ONLY allowed in spectator mode.
+	# ----------------------------------------------------------
+
+	if not spectator_mode:
+
+		is_drawing = false
+		prev_mouse_pos = mouse_pos
+
+		return
+
+
+	# =========================================================
+	# SPECTATOR MODE DRAWING
+	# =========================================================
+
+	var drawing_now := (
+		Input.is_action_pressed(\"draw\")
+		or Input.is_action_pressed(\"erase\")
+	)
+
+
+	if drawing_now:
+
+		var distance := prev_mouse_pos.distance_to(mouse_pos)
+
+		var direction := Vector2.ZERO
+
+		if distance > 0.0:
+			direction = prev_mouse_pos.direction_to(mouse_pos)
+
+
+		var color: Color
+		var brush_size: int
+
+
+		# -----------------------------------------------------
+		# Eraser
+		# -----------------------------------------------------
+
+		if Input.is_action_pressed(\"erase\"):
+
+			color = Color(0, 0, 0, 0)
+
+			brush_size = max(
+				1,
+				int(pen_size * 1.2)
+			)
+
+
+		# -----------------------------------------------------
+		# Pen
+		# -----------------------------------------------------
+
+		else:
+
+			color = Color(0, 0, 0, 1)
+
+			brush_size = pen_size
+
+
+		var image_center := Vector2(
+			img.get_width(),
+			img.get_height()
+		) / 2.0
+
+
+		# -----------------------------------------------------
+		# Draw continuously between mouse positions.
+		# -----------------------------------------------------
+
+		for i in range(int(distance) + 1):
+
+			var point := (
+				prev_mouse_pos
+				+ direction * i
+			)
+
+			var image_point := (
+				point
+				+ image_center
+			)
+
+
+			for x_offset in range(
+				-brush_size,
+				brush_size + 1
+			):
+
+				for y_offset in range(
+					-brush_size,
+					brush_size + 1
+				):
+
+					if (
+						x_offset * x_offset
+						+ y_offset * y_offset
+						<= brush_size * brush_size
+					):
+
+						var x := (
+							int(image_point.x)
+							+ x_offset
+						)
+
+						var y := (
+							int(image_point.y)
+							+ y_offset
+						)
+
+
+						if (
+							x >= 0
+							and x < img.get_width()
+							and y >= 0
+							and y < img.get_height()
+						):
+
+							var old_pixel := img.get_pixel(
+								x,
+								y
+							)
+
+
+							# Only mark the terrain dirty if
+							# this pixel actually changed.
+							if old_pixel != color:
+
+								img.set_pixel(
+									x,
+									y,
+									color
+								)
+
+								terrain_dirty = true
+
+
+		# Update the visual drawing immediately.
+		texture_image.update(img)
+
+		is_drawing = true
+
+		prev_mouse_pos = mouse_pos
+
+
+	else:
+
+		is_drawing = false
+		prev_mouse_pos = mouse_pos
+
+
+# ============================================================
+# REQUEST COLLISION REBUILD
+# ============================================================
+
+func request_rebuild() -> void:
+
+	if rebuild_pending:
+		return
+
+	rebuild_pending = true
+
+	call_deferred(\"rebuild_terrain\")
+
+
+# ============================================================
+# REBUILD TERRAIN
+# ============================================================
+
+func rebuild_terrain() -> void:
+
+	rebuild_pending = false
+
+
+	if not is_instance_valid(self):
+		return
+
+	if img == null:
+		return
+
+
+	# ----------------------------------------------------------
+	# Convert the drawing into a solid/transparent bitmap.
+	# ----------------------------------------------------------
+
+	var bitmap := BitMap.new()
+
+	bitmap.create_from_image_alpha(
+		img,
+		0.5
+	)
+
+
+	var width := img.get_width()
+	var height := img.get_height()
+
+
+	# Every pair of points is one collision segment.
+	var segments := PackedVector2Array()
+
+
+	var image_center := Vector2(
+		width,
+		height
+	) / 2.0
+
+
+	# =========================================================
+	# HORIZONTAL BOUNDARIES
+	# =========================================================
+
+	for y in range(height + 1):
+
+		var run_start := -1
+
+
+		for x in range(width + 1):
+
+			var above_solid := false
+			var below_solid := false
+
+
+			if x < width:
+
+				if y > 0:
+					above_solid = bitmap.get_bit(
+						x,
+						y - 1
+					)
+
+				if y < height:
+					below_solid = bitmap.get_bit(
+						x,
+						y
+					)
+
+
+			var boundary_here := (
+				above_solid != below_solid
+			)
+
+
+			if boundary_here and run_start == -1:
+
+				run_start = x
+
+
+			elif (
+				not boundary_here
+				and run_start != -1
+			):
+
+				var start_point := Vector2(
+					run_start,
+					y
+				) - image_center
+
+
+				var end_point := Vector2(
+					x,
+					y
+				) - image_center
+
+
+				segments.append(start_point)
+				segments.append(end_point)
+
+				run_start = -1
+
+
+	# =========================================================
+	# VERTICAL BOUNDARIES
+	# =========================================================
+
+	for x in range(width + 1):
+
+		var run_start := -1
+
+
+		for y in range(height + 1):
+
+			var left_solid := false
+			var right_solid := false
+
+
+			if y < height:
+
+				if x > 0:
+					left_solid = bitmap.get_bit(
+						x - 1,
+						y
+					)
+
+				if x < width:
+					right_solid = bitmap.get_bit(
+						x,
+						y
+					)
+
+
+			var boundary_here := (
+				left_solid != right_solid
+			)
+
+
+			if boundary_here and run_start == -1:
+
+				run_start = y
+
+
+			elif (
+				not boundary_here
+				and run_start != -1
+			):
+
+				var segment_length := y - run_start
+
+
+				# ------------------------------------------------
+				# Ignore extremely short vertical walls.
+				#
+				# For example, with minimum_wall_height = 2,
+				# a 1-pixel vertical step doesn't become a wall.
+				# ------------------------------------------------
+
+				if segment_length >= minimum_wall_height:
+
+					var start_point := Vector2(
+						x,
+						run_start
+					) - image_center
+
+
+					var end_point := Vector2(
+						x,
+						y
+					) - image_center
+
+
+					segments.append(start_point)
+					segments.append(end_point)
+
+
+				run_start = -1
+
+
+	# =========================================================
+	# CREATE NEW TERRAIN
+	# =========================================================
+
+	var new_terrain := StaticBody2D.new()
+
+	new_terrain.name = \"TerrainCollision\"
+
+
+	if segments.size() > 0:
+
+		var collision_shape := CollisionShape2D.new()
+
+		var concave_shape := ConcavePolygonShape2D.new()
+
+		concave_shape.segments = segments
+
+		collision_shape.shape = concave_shape
+
+		new_terrain.add_child(collision_shape)
+
+
+	# ----------------------------------------------------------
+	# Add the NEW terrain first.
+	# ----------------------------------------------------------
+
+	get_parent().add_child(new_terrain)
+
+	new_terrain.global_transform = global_transform
+
+ 
+	# ----------------------------------------------------------
+	# Remove the previous terrain.
+	# ----------------------------------------------------------
+
+	if is_instance_valid(current_terrain):
+		current_terrain.queue_free()
+
+
+	current_terrain = new_terrain
+
+	# The current collision now matches the image.
+	terrain_dirty = false
+"
+
+[sub_resource type="GDScript" id="GDScript_ocdtm"]
+script/source = "extends CharacterBody2D
+
+# --------------------------------------------------
+# NORMAL MOVEMENT
+# --------------------------------------------------
+
+@export var move_speed: float = 250.0
+@export var acceleration: float = 1800.0
+@export var friction: float = 2200.0
+
+@export var gravity: float = 1200.0
+
+
+# --------------------------------------------------
+# SPECTATOR MODE
+# --------------------------------------------------
+
+@export var fly_speed: float = 500.0
+
+var spectator_mode := false
+
+
+# --------------------------------------------------
+# REFERENCES
+# --------------------------------------------------
+
+@onready var drawing = $\"../Drawing\"
+
+
+func _physics_process(delta: float) -> void:
+
+	# Space toggles spectator mode.
+	if Input.is_action_just_pressed(\"toggle_flight\"):
+		toggle_spectator_mode()
+
+
+	if spectator_mode:
+		spectator_movement()
+
+	else:
+		normal_movement(delta)
+
+
+# ==================================================
+# NORMAL CHARACTER MOVEMENT
+# ==================================================
+
+func normal_movement(delta: float) -> void:
+
+	# Gravity
+	if not is_on_floor():
+		velocity.y += gravity * delta
+	else:
+		velocity.y = 0
+
+
+	# WASD horizontal movement
+	var direction := Input.get_axis(
+		\"move_left\",
+		\"move_right\"
+	)
+
+	if direction != 0:
+		velocity.x = move_toward(
+			velocity.x,
+			direction * move_speed,
+			acceleration * delta
+		)
+
+	else:
+		velocity.x = move_toward(
+			velocity.x,
+			0,
+			friction * delta
+		)
+
+
+	move_and_slide()
+
+
+# ==================================================
+# SPECTATOR / FLIGHT MOVEMENT
+# ==================================================
+
+func spectator_movement() -> void:
+
+	# Ignore gravity.
+	velocity = Vector2.ZERO
+
+	var direction := Vector2.ZERO
+
+
+	if Input.is_action_pressed(\"move_left\"):
+		direction.x -= 1
+
+	if Input.is_action_pressed(\"move_right\"):
+		direction.x += 1
+
+	if Input.is_action_pressed(\"move_up\"):
+		direction.y -= 1
+
+	if Input.is_action_pressed(\"move_down\"):
+		direction.y += 1
+
+
+	# Prevent diagonal movement from being faster.
+	if direction.length() > 0:
+		direction = direction.normalized()
+
+
+	velocity = direction * fly_speed
+
+
+	# Move without being affected by terrain.
+	global_position += velocity * get_physics_process_delta_time()
+
+
+# ==================================================
+# TOGGLE SPECTATOR MODE
+# ==================================================
+
+func toggle_spectator_mode() -> void:
+
+	spectator_mode = not spectator_mode
+
+
+	# --------------------------------------------------
+	# ENTER SPECTATOR MODE
+	# --------------------------------------------------
+
+	if spectator_mode:
+
+		# Stop current movement.
+		velocity = Vector2.ZERO
+
+		# Disable player collision.
+		$CollisionShape2D.set_deferred(
+			\"disabled\",
+			true
+		)
+
+		# Tell the drawing system that editing is now allowed.
+		drawing.set_spectator_mode(true)
+
+
+	# --------------------------------------------------
+	# EXIT SPECTATOR MODE
+	# --------------------------------------------------
+
+	else:
+
+		# Re-enable player collision.
+		$CollisionShape2D.set_deferred(
+			\"disabled\",
+			false
+		)
+
+		velocity = Vector2.ZERO
+
+		# Tell the drawing system that editing has ended.
+		#
+		# This is what triggers the collision rebuild.
+		drawing.set_spectator_mode(false)
+"
+
+[sub_resource type="PlaceholderTexture2D" id="PlaceholderTexture2D_npwx6"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_npwx6"]
+
+[sub_resource type="GDScript" id="GDScript_wtly1"]
+script/source = "extends Camera2D
+
+@export var camera_move_speed: float = 400.0
+@export var camera_smoothing: float = 8.0
+
+@export var max_horizontal_offset: float = 500.0
+@export var max_vertical_offset: float = 300.0
+
+var target_offset := Vector2.ZERO
+
+
+func _process(delta: float) -> void:
+
+	# --------------------------------------------------
+	# CAMERA MOVEMENT
+	# --------------------------------------------------
+
+	var direction := Vector2.ZERO
+
+	if Input.is_action_pressed(\"camera_left\"):
+		direction.x -= 1
+
+	if Input.is_action_pressed(\"camera_right\"):
+		direction.x += 1
+
+	if Input.is_action_pressed(\"camera_up\"):
+		direction.y -= 1
+
+	if Input.is_action_pressed(\"camera_down\"):
+		direction.y += 1
+
+
+	# Move the desired camera offset.
+	target_offset += direction * camera_move_speed * delta
+
+
+	# Keep the camera within its allowed range.
+	target_offset.x = clamp(
+		target_offset.x,
+		-max_horizontal_offset,
+		max_horizontal_offset
+	)
+
+	target_offset.y = clamp(
+		target_offset.y,
+		-max_vertical_offset,
+		max_vertical_offset
+	)
+
+
+	# Smoothly move toward the target.
+	position = position.lerp(
+		target_offset,
+		1.0 - exp(-camera_smoothing * delta)
+	)
+"
+
+[node name="World" type="Node2D" unique_id=2018572342]
+
+[node name="Grid" type="Node2D" parent="." unique_id=1912680127]
+script = SubResource("GDScript_jonpb")
+
+[node name="Drawing" type="Sprite2D" parent="." unique_id=964223902]
+script = SubResource("GDScript_npwx6")
+canvas_size = 2024
+pen_size = 30
+
+[node name="Player" type="CharacterBody2D" parent="." unique_id=103518949]
+script = SubResource("GDScript_ocdtm")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1019937043]
+scale = Vector2(50, 80)
+texture = SubResource("PlaceholderTexture2D_npwx6")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=542763328]
+scale = Vector2(2.4, 4)
+shape = SubResource("RectangleShape2D_npwx6")
+
+[node name="Camera2D" type="Camera2D" parent="Player" unique_id=1041327615]
+script = SubResource("GDScript_wtly1")
+max_vertical_offset = 250.0
