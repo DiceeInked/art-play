@@ -12,6 +12,7 @@ var terrain_dirty := false
 var rebuild_pending := false
 var current_terrain: StaticBody2D
 @onready var palette = $"../Palette"
+var active_tool := 0 # 0 = none, 1 = brush, 2 = eraser
 
 func _ready() -> void:
 	create_canvas()
@@ -39,21 +40,37 @@ func clear_canvas() -> void:
 	create_canvas()
 	image_texture.update(image)
 
-func _process(_delta: float) -> void:
-	var mouse_position := to_local(get_global_mouse_position())
+func _unhandled_input(event: InputEvent) -> void:
 	if not edit_mode:
-		previous_mouse_position = mouse_position
 		return
-	if Input.is_action_just_pressed("clear_canvas"):
+	if event.is_action_pressed("clear_canvas"):
 		clear_canvas()
-		previous_mouse_position = mouse_position
 		return
-	if Input.is_action_pressed("draw") or Input.is_action_pressed("erase"):
-		var color := Color.TRANSPARENT if Input.is_action_pressed("erase") else palette.brush_color
-		var size := int(pen_size * 1.25) if Input.is_action_pressed("erase") else pen_size
-		draw_stroke(previous_mouse_position, mouse_position, color, size)
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			previous_mouse_position = to_local(get_global_mouse_position())
+			if event.pressed:
+				active_tool = 1 if event.button_index == MOUSE_BUTTON_LEFT else 2
+				paint_to(previous_mouse_position)
+			else:
+				active_tool = 0
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and active_tool != 0:
+		var current_mouse_position := to_local(get_global_mouse_position())
+		draw_stroke(previous_mouse_position, current_mouse_position, tool_color(), tool_size())
 		image_texture.update(image)
-	previous_mouse_position = mouse_position
+		previous_mouse_position = current_mouse_position
+		get_viewport().set_input_as_handled()
+
+func paint_to(position: Vector2) -> void:
+	draw_stroke(position, position, tool_color(), tool_size())
+	image_texture.update(image)
+
+func tool_color() -> Color:
+	return Color.TRANSPARENT if active_tool == 2 else palette.brush_color
+
+func tool_size() -> int:
+	return int(pen_size * 1.25) if active_tool == 2 else pen_size
 
 func draw_stroke(from: Vector2, to: Vector2, color: Color, radius: int) -> void:
 	var distance := from.distance_to(to)
