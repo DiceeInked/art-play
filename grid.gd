@@ -2,10 +2,21 @@ extends Node2D
 
 @export var grid_size := 50.0
 @onready var palette = $"../Palette"
+var last_camera_center := Vector2.INF
+var last_camera_zoom := Vector2.INF
+
+func _ready() -> void:
+	palette.colors_changed.connect(queue_redraw)
 
 func _process(_delta: float) -> void:
-	# Redraw against the camera's current viewport, making the grid effectively infinite.
-	queue_redraw()
+	# Redraw only when needed while still covering every camera position.
+	var camera := get_viewport().get_camera_2d()
+	var center := camera.get_screen_center_position() if camera else Vector2.ZERO
+	var zoom := camera.zoom if camera else Vector2.ONE
+	if center != last_camera_center or zoom != last_camera_zoom:
+		last_camera_center = center
+		last_camera_zoom = zoom
+		queue_redraw()
 
 func _draw() -> void:
 	var camera := get_viewport().get_camera_2d()

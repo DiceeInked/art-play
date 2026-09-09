@@ -4,13 +4,15 @@ signal colors_changed
 
 var background_color := Color("0b1020")
 var brush_color := Color("65f4d0")
-var swatches: Array[Color] = [
+const SWATCH_COUNT := 5
+const DEFAULT_SWATCHES: Array[Color] = [
 	Color("65f4d0"),
 	Color("ff6ba6"),
 	Color("ffd166"),
 	Color("8b7cff"),
 	Color("ffffff"),
 ]
+var swatches: Array[Color] = DEFAULT_SWATCHES.duplicate()
 
 const SAVE_PATH := "user://art_play_palette.cfg"
 
@@ -27,11 +29,13 @@ func set_brush(color: Color) -> void:
 	save_palette()
 	colors_changed.emit()
 
-func add_swatch(color: Color) -> void:
-	if color not in swatches:
-		swatches.append(color)
-		save_palette()
-		colors_changed.emit()
+func set_swatch(index: int, color: Color) -> void:
+	if index < 0 or index >= swatches.size():
+		return
+	swatches[index] = color
+	brush_color = color
+	save_palette()
+	colors_changed.emit()
 
 func save_palette() -> void:
 	var config := ConfigFile.new()
@@ -53,4 +57,8 @@ func load_palette() -> void:
 	if stored_swatches is Array:
 		swatches.clear()
 		for value in stored_swatches:
+			if swatches.size() >= SWATCH_COUNT:
+				break
 			swatches.append(Color(value))
+	while swatches.size() < SWATCH_COUNT:
+		swatches.append(DEFAULT_SWATCHES[swatches.size()])
