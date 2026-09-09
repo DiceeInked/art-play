@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://dfdbdr8yvkmki"]
+[gd_scene load_steps=9 format=3 uid="uid://dfdbdr8yvkmki"]
 
 [ext_resource type="Script" path="res://grid.gd" id="1_grid"]
 [ext_resource type="Script" path="res://drawing_canvas.gd" id="2_drawing"]
@@ -6,11 +6,15 @@
 [ext_resource type="Script" path="res://avatar.gd" id="4_avatar"]
 [ext_resource type="Script" path="res://player_camera.gd" id="5_camera"]
 [ext_resource type="Script" path="res://hud.gd" id="6_hud"]
+[ext_resource type="Script" path="res://palette.gd" id="7_palette"]
 
 [sub_resource type="RectangleShape2D" id="PlayerShape"]
 size = Vector2(28, 38)
 
 [node name="World" type="Node2D"]
+
+[node name="Palette" type="Node" parent="."]
+script = ExtResource("7_palette")
 
 [node name="Grid" type="Node2D" parent="."]
 script = ExtResource("1_grid")
@@ -35,44 +39,3 @@ script = ExtResource("5_camera")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("6_hud")
-
-[node name="Margin" type="MarginContainer" parent="HUD"]
-offset_left = 18.0
-offset_top = 18.0
-offset_right = 720.0
-offset_bottom = 142.0
-theme_override_constants/margin_left = 14
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 14
-theme_override_constants/margin_bottom = 12
-
-[node name="Panel" type="ColorRect" parent="HUD/Margin"]
-custom_minimum_size = Vector2(0, 100)
-color = Color(0.035, 0.063, 0.125, 0.9)
-
-[node name="Title" type="Label" parent="HUD/Margin/Panel"]
-offset_left = 14.0
-offset_top = 12.0
-offset_right = 620.0
-offset_bottom = 38.0
-theme_override_colors/font_color = Color(0.396, 0.957, 0.816, 1)
-theme_override_font_sizes/font_size = 20
-text = "ART PLAY"
-
-[node name="Subtitle" type="Label" parent="HUD/Margin/Panel"]
-offset_left = 14.0
-offset_top = 39.0
-offset_right = 660.0
-offset_bottom = 62.0
-theme_override_colors/font_color = Color(0.68, 0.76, 0.9, 1)
-theme_override_font_sizes/font_size = 14
-text = "Draw the path. Then walk it.  •  Arrow keys pan the camera  •  R resets your drawing"
-
-[node name="Status" type="Label" parent="HUD/Margin/Panel"]
-offset_left = 14.0
-offset_top = 68.0
-offset_right = 660.0
-offset_bottom = 92.0
-theme_override_colors/font_color = Color(1, 1, 1, 1)
-theme_override_font_sizes/font_size = 14
-text = "PLAY MODE  •  Walk with A / D  •  Press Space to edit the world"
