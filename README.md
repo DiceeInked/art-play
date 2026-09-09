@@ -8,10 +8,10 @@ A small Godot playground where you draw terrain, then walk across it.
 - `Space` — switch between Play and Edit modes
 - Left mouse — draw terrain in Edit mode
 - Right mouse — erase terrain in Edit mode
-- `R` — reset the drawing to the starter platform
+- `R` — reset the drawing to the starter platform (in Edit mode)
 - Arrow keys — pan the camera
 
-The grid follows the camera and continues in every direction. Use the Background and Brush color pickers to set the active colors, then use **Save brush swatch** to keep a brush color for later. Click a saved swatch to use it as the brush; right-click it to use it as the background. Palette choices persist locally on the device that runs the game.
+The grid follows the camera and continues in every direction. Click **Palette** in the top-right corner to open the color editor. It has five persistent swatches: click one to select it as the brush, edit its hex value, then select **Use selected color as background** when needed. Palette choices persist locally on the device that runs the game.
 
 ## Project structure
 
