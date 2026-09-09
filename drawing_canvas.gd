@@ -11,6 +11,7 @@ var previous_mouse_position := Vector2.ZERO
 var terrain_dirty := false
 var rebuild_pending := false
 var current_terrain: StaticBody2D
+@onready var palette = $"../Palette"
 
 func _ready() -> void:
 	create_canvas()
@@ -19,7 +20,7 @@ func _ready() -> void:
 func create_canvas() -> void:
 	image = Image.create_empty(canvas_size, canvas_size, false, Image.FORMAT_RGBA8)
 	image.fill(Color.TRANSPARENT)
-	image.fill_rect(Rect2i(64, int(canvas_size * 0.70), canvas_size - 128, 20), Color("65f4d0"))
+	image.fill_rect(Rect2i(64, int(canvas_size * 0.70), canvas_size - 128, 20), palette.brush_color)
 	image_texture = ImageTexture.create_from_image(image)
 	texture = image_texture
 	terrain_dirty = true
@@ -48,7 +49,7 @@ func _process(_delta: float) -> void:
 		previous_mouse_position = mouse_position
 		return
 	if Input.is_action_pressed("draw") or Input.is_action_pressed("erase"):
-		var color := Color.TRANSPARENT if Input.is_action_pressed("erase") else Color("65f4d0")
+		var color := Color.TRANSPARENT if Input.is_action_pressed("erase") else palette.brush_color
 		var size := int(pen_size * 1.25) if Input.is_action_pressed("erase") else pen_size
 		draw_stroke(previous_mouse_position, mouse_position, color, size)
 		image_texture.update(image)
